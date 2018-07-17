@@ -65,11 +65,20 @@ class SQLiteREST(object):
         return d
 
     @cherrypy.tools.json_in()
-    def PUT(self, table):
+    def POST(self, table):
         with sqlite3.connect(self.db_file) as con:
             for row in cherrypy.request.json:
                 stmt = "INSERT INTO " + table + " VALUES(" + ",".join([SQLiteREST.to_sqlite_str(x) for x in row]) + ");"
                 con.execute(stmt)
+
+    @cherrypy.tools.json_in()
+    def PUT(self, table, query=""):
+        with sqlite3.connect(self.db_file) as con:
+            where = " WHERE " + query if query else ""
+            stmt = "UPDATE " + table + " SET " + ",".join(
+                [k + '=' + SQLiteREST.to_sqlite_str(v) for k, v in cherrypy.request.json.items()]
+            ) + where
+            con.execute(stmt)
 
     @cherrypy.tools.json_in()
     def DELETE(self, table, query=""):
