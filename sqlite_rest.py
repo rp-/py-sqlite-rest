@@ -3,6 +3,7 @@ import argparse
 import cherrypy
 import sqlite3
 import enum
+import configparser
 
 
 class AccessType(enum.Enum):
@@ -78,19 +79,60 @@ class SQLiteREST(object):
             con.execute(stmt)
 
 
+def parse_config(config_path, config_):
+    def set_config_int(config_, cp, section, key):
+        fkey = section + "/" + key
+        config_[fkey] = int(cp.get(section, key, fallback=config_[fkey]))
+
+    def set_config(config_, cp, section, key):
+        fkey = section + "/" + key
+        config_[fkey] = cp.get(section, key, fallback=config_[fkey])
+
+    if config_path:
+        cp = configparser.ConfigParser()
+        cp.read(config_path)
+
+        if cp.has_section("Network"):
+            set_config_int(config_, cp, "Network", "port")
+
+        if cp.has_section("Security"):
+            set_config(config_, cp, "Security", "auth")
+            set_config(config_, cp, "Security", "user")
+            set_config(config_, cp, "Security", "password")
+
+    return config_
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="sqlite REST interface")
-    parser.add_argument("-p", "--port", default=8080, type=int, help="tcp listen port")
+    parser.add_argument("-c", "--config", help="configuration file path")
     parser.add_argument("sqlite_file")
 
     args = parser.parse_args()
+
+    config = {
+        "Network/port": 8080,
+        "Security/auth": "none",
+        "Security/user": "",
+        "Security/password": ""
+    }
+
+    config = parse_config(args.config, config)
+
+    def validate_password(realm, username, password):
+        return username == config['Security/user'] and password == config['Security/password']
+
     conf = {
         '/': {
             'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
-            'tools.response_headers.on': True
+            'tools.response_headers.on': True,
+            'tools.auth_basic.on': config['Security/auth'] == 'basic',
+            'tools.auth_basic.realm': 'sqlite_secure',
+            'tools.auth_basic.checkpassword': validate_password,
+            'tools.auth_basic.accept_charset': 'UTF-8'
         },
         'global': {
-            'server.socket_port': args.port
+            'server.socket_port': config["Network/port"]
         }
     }
     cherrypy.quickstart(SQLiteREST(args.sqlite_file), '/', conf)
