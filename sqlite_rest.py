@@ -14,8 +14,9 @@ class AccessType(enum.Enum):
 @cherrypy.expose
 class SQLiteREST(object):
 
-    def __init__(self, dbfile, read_allowed=None, write_allowed=None):
+    def __init__(self, dbfile, headers=None, read_allowed=None, write_allowed=None):
         self.db_file = dbfile
+        self.headers = headers
         self.read_allowed = read_allowed
         self.write_allowed = write_allowed
 
@@ -46,8 +47,13 @@ class SQLiteREST(object):
 
         return True
 
+    def _apply_headers(self):
+        for key, val in self.headers.items():
+            cherrypy.response.headers[key] = val
+
     @cherrypy.tools.json_out()
-    def GET(self, table, query="", describe=False):
+    def GET(self, table, query="", describe=False, **kwargs):
+        self._apply_headers()
         d = []
         self.check_access(table, AccessType.READ)
         with sqlite3.connect(self.db_file) as con:
@@ -66,6 +72,7 @@ class SQLiteREST(object):
 
     @cherrypy.tools.json_in()
     def POST(self, table):
+        self._apply_headers()
         with sqlite3.connect(self.db_file) as con:
             for row in cherrypy.request.json:
                 stmt = "INSERT INTO " + table + " VALUES(" + ",".join([SQLiteREST.to_sqlite_str(x) for x in row]) + ");"
@@ -73,6 +80,7 @@ class SQLiteREST(object):
 
     @cherrypy.tools.json_in()
     def PUT(self, table, query=""):
+        self._apply_headers()
         with sqlite3.connect(self.db_file) as con:
             where = " WHERE " + query if query else ""
             stmt = "UPDATE " + table + " SET " + ",".join(
@@ -82,6 +90,7 @@ class SQLiteREST(object):
 
     @cherrypy.tools.json_in()
     def DELETE(self, table, query=""):
+        self._apply_headers()
         with sqlite3.connect(self.db_file) as con:
             where = " WHERE " + query if query else ""
             stmt = "DELETE FROM " + table + where
@@ -123,7 +132,8 @@ if __name__ == '__main__':
         "Network/port": 8080,
         "Security/auth": "none",
         "Security/user": "",
-        "Security/password": ""
+        "Security/password": "",
+        "Security/origin-allow": "*"
     }
 
     config = parse_config(args.config, config)
@@ -144,4 +154,7 @@ if __name__ == '__main__':
             'server.socket_port': config["Network/port"]
         }
     }
-    cherrypy.quickstart(SQLiteREST(args.sqlite_file), '/', conf)
+    headers = {
+        "Access-Control-Allow-Origin": config['Security/origin-allow']
+    }
+    cherrypy.quickstart(SQLiteREST(args.sqlite_file, headers=headers), '/', conf)
