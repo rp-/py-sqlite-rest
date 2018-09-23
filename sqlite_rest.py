@@ -96,6 +96,9 @@ class SQLiteREST(object):
             stmt = "DELETE FROM " + table + where
             con.execute(stmt)
 
+    def OPTIONS(self, path, **kwargs):
+        self._apply_headers()
+
 
 def parse_config(config_path, config_):
     def set_config_int(config_, cp, section, key):
